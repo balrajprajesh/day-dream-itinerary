@@ -34,7 +34,7 @@ export const TravelAgent = () => {
     if (!apiKey) {
       toast({
         title: "API Key Required",
-        description: "Please enter your OpenAI API key to use the travel agent.",
+        description: "Please enter your Groq API key to use the travel agent.",
         variant: "destructive",
       });
       return;
@@ -52,14 +52,14 @@ export const TravelAgent = () => {
     setIsLoading(true);
     
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4.1-2025-04-14',
+          model: 'llama3-70b-8192',
           messages: [
             {
               role: 'system',
@@ -95,7 +95,7 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response from OpenAI');
+        throw new Error('Failed to get response from Groq');
       }
 
       const data = await response.json();
@@ -143,16 +143,16 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <label className="text-sm font-medium">OpenAI API Key</label>
+            <label className="text-sm font-medium">Groq API Key</label>
             <Input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder="gsk_..."
               className="bg-background/80 backdrop-blur-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Enter your OpenAI API key to generate travel itineraries
+              Enter your Groq API key to generate travel itineraries (using Llama3-70B model)
             </p>
           </div>
           
