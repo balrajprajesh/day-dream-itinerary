@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, Calendar, Clock, Plane } from "lucide-react";
+import { MapPin, Calendar, Clock, Plane, Users } from "lucide-react";
 
 interface ItineraryDay {
   day: number;
@@ -21,11 +21,39 @@ interface TravelPlan {
   itinerary: ItineraryDay[];
 }
 
+interface FlightData {
+  departure_token: string;
+  price: number;
+  airline: string;
+  flight_number: string;
+  departure_time: string;
+  arrival_time: string;
+  duration: string;
+  stops: number;
+}
+
+interface FlightSearchParams {
+  departureCity: string;
+  departureDate: string;
+  returnDate: string;
+  passengers: number;
+}
+
 export const TravelAgent = () => {
   const [userInput, setUserInput] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [serpApiKey, setSerpApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingFlights, setIsLoadingFlights] = useState(false);
   const [travelPlan, setTravelPlan] = useState<TravelPlan | null>(null);
+  const [flightParams, setFlightParams] = useState<FlightSearchParams>({
+    departureCity: '',
+    departureDate: '',
+    returnDate: '',
+    passengers: 1
+  });
+  const [flights, setFlights] = useState<FlightData[]>([]);
+  const [showFlightSearch, setShowFlightSearch] = useState(false);
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,6 +136,7 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
           overview: result.overview,
           itinerary: result.itinerary
         });
+        setShowFlightSearch(true);
         toast({
           title: "Itinerary Generated!",
           description: `Created a ${result.duration}-day plan for ${result.destination}`,
@@ -128,6 +157,71 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const searchFlights = async () => {
+    if (!serpApiKey) {
+      toast({
+        title: "SERP API Key Required",
+        description: "Please enter your SERP API key to search flights.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!flightParams.departureCity || !flightParams.departureDate || !flightParams.returnDate) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all flight search details.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoadingFlights(true);
+    
+    try {
+      const params = new URLSearchParams({
+        engine: 'google_flights',
+        departure_id: flightParams.departureCity,
+        arrival_id: travelPlan?.destination || '',
+        outbound_date: flightParams.departureDate,
+        return_date: flightParams.returnDate,
+        adults: flightParams.passengers.toString(),
+        api_key: serpApiKey
+      });
+
+      const response = await fetch(`https://serpapi.com/search?${params}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch flights');
+      }
+
+      const data = await response.json();
+      
+      if (data.best_flights && data.best_flights.length > 0) {
+        setFlights(data.best_flights.slice(0, 5)); // Show top 5 flights
+        toast({
+          title: "Flights Found!",
+          description: `Found ${data.best_flights.length} available flights`,
+        });
+      } else {
+        toast({
+          title: "No Flights Found",
+          description: "Try adjusting your search criteria.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error searching flights:', error);
+      toast({
+        title: "Error",
+        description: "Failed to search flights. Please check your API key and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingFlights(false);
     }
   };
 
@@ -229,6 +323,138 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
                             <li key={i} className="text-muted-foreground">• {tip}</li>
                           ))}
                         </ul>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Flight Search Form */}
+      {showFlightSearch && (
+        <Card className="border-0 shadow-travel bg-gradient-sky">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Plane className="h-6 w-6 text-primary" />
+              Find Flights to {travelPlan?.destination}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">SERP API Key</label>
+              <Input
+                type="password"
+                value={serpApiKey}
+                onChange={(e) => setSerpApiKey(e.target.value)}
+                placeholder="Your SERP API key..."
+                className="bg-background/80 backdrop-blur-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter your SERP API key to search for flights
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Departure City</label>
+                <Input
+                  value={flightParams.departureCity}
+                  onChange={(e) => setFlightParams(prev => ({ ...prev, departureCity: e.target.value }))}
+                  placeholder="New York, London, etc."
+                  className="bg-background/80 backdrop-blur-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Passengers
+                </label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="9"
+                  value={flightParams.passengers}
+                  onChange={(e) => setFlightParams(prev => ({ ...prev, passengers: parseInt(e.target.value) || 1 }))}
+                  className="bg-background/80 backdrop-blur-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Departure Date</label>
+                <Input
+                  type="date"
+                  value={flightParams.departureDate}
+                  onChange={(e) => setFlightParams(prev => ({ ...prev, departureDate: e.target.value }))}
+                  className="bg-background/80 backdrop-blur-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Return Date</label>
+                <Input
+                  type="date"
+                  value={flightParams.returnDate}
+                  onChange={(e) => setFlightParams(prev => ({ ...prev, returnDate: e.target.value }))}
+                  className="bg-background/80 backdrop-blur-sm"
+                />
+              </div>
+            </div>
+
+            <Button 
+              onClick={searchFlights}
+              disabled={isLoadingFlights}
+              variant="travel"
+              size="lg"
+              className="w-full"
+            >
+              {isLoadingFlights ? "Searching Flights..." : "Search Flights"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Flight Results */}
+      {flights.length > 0 && (
+        <Card className="border-0 shadow-warm">
+          <CardHeader className="bg-gradient-sunset text-accent-foreground rounded-t-lg">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Plane className="h-6 w-6" />
+              Available Flights
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              {flights.map((flight, index) => (
+                <Card key={index} className="border border-border/50">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{flight.airline}</Badge>
+                          <span className="text-sm text-muted-foreground">{flight.flight_number}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="font-medium">Departure</p>
+                            <p className="text-muted-foreground">{flight.departure_time}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium">Arrival</p>
+                            <p className="text-muted-foreground">{flight.arrival_time}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>{flight.duration}</span>
+                          <span>{flight.stops === 0 ? 'Direct' : `${flight.stops} stop${flight.stops > 1 ? 's' : ''}`}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-primary">${flight.price}</p>
+                        <p className="text-xs text-muted-foreground">per person</p>
                       </div>
                     </div>
                   </CardContent>
