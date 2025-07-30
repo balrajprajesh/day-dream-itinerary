@@ -207,56 +207,67 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
     setIsLoadingHotels(true);
     
     try {
-      const params = new URLSearchParams({
-        engine: 'google_hotels',
-        q: `hotels in ${travelPlan?.destination}`,
-        check_in_date: flightParams.departureDate,
-        check_out_date: flightParams.returnDate,
-        adults: flightParams.passengers.toString(),
-        currency: 'USD',
-        gl: 'us',
-        hl: 'en',
-        api_key: serpApiKey
-      });
-
-      const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        }
+      // Since SERP API has CORS restrictions, we need to use a proxy or backend
+      // For now, let's simulate the API call and show mock data
+      toast({
+        title: "CORS Issue Detected",
+        description: "SERP API blocks direct browser requests. Using mock data for demonstration.",
+        variant: "destructive",
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('SERP API Error:', errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log('Hotel SERP API Response:', data);
-      
-      if (data.properties && data.properties.length > 0) {
-        const formattedHotels = data.properties.slice(0, 6).map((hotel: any) => ({
-          name: hotel.name || 'Hotel Name',
-          rating: hotel.overall_rating || 0,
-          price: hotel.rate_per_night?.lowest || 0,
-          image: hotel.images?.[0]?.thumbnail || '',
-          location: hotel.neighborhood || travelPlan?.destination || '',
-          amenities: hotel.amenities?.slice(0, 3) || []
-        }));
+      // Mock hotel data for demonstration
+      setTimeout(() => {
+        const mockHotels: HotelData[] = [
+          {
+            name: "Conrad Maldives Rangali Island",
+            rating: 4.8,
+            price: 1200,
+            image: "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=300&h=200&fit=crop",
+            location: "South Ari Atoll",
+            amenities: ["Private Beach", "Spa", "Pool"]
+          },
+          {
+            name: "Four Seasons Resort Maldives",
+            rating: 4.9,
+            price: 1500,
+            image: "https://images.unsplash.com/photo-1520637836862-4d197d17c90a?w=300&h=200&fit=crop",
+            location: "Kuda Huraa",
+            amenities: ["Water Villa", "Diving Center", "Restaurant"]
+          },
+          {
+            name: "Baros Maldives",
+            rating: 4.7,
+            price: 950,
+            image: "https://images.unsplash.com/photo-1573843981267-be1999ff37cd?w=300&h=200&fit=crop",
+            location: "North Malé Atoll",
+            amenities: ["Snorkeling", "Spa", "Beach Bar"]
+          },
+          {
+            name: "Kurumba Maldives",
+            rating: 4.5,
+            price: 650,
+            image: "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=300&h=200&fit=crop",
+            location: "North Malé Atoll",
+            amenities: ["Kids Club", "Water Sports", "Multiple Restaurants"]
+          }
+        ];
         
-        setHotels(formattedHotels);
-        toast({
-          title: "Hotels Found!",
-          description: `Found ${data.properties.length} available hotels`,
+        // Filter by budget preference
+        const filteredHotels = mockHotels.filter(hotel => {
+          if (flightParams.budget === 'budget-friendly') return hotel.price < 800;
+          if (flightParams.budget === 'luxury') return hotel.price > 1000;
+          return hotel.price >= 800 && hotel.price <= 1000;
         });
-      } else {
+        
+        setHotels(filteredHotels.length > 0 ? filteredHotels : mockHotels);
         toast({
-          title: "No Hotels Found",
-          description: "Try adjusting your search criteria.",
-          variant: "destructive",
+          title: "Mock Hotels Loaded!",
+          description: "Showing sample hotel data. Integrate with backend for real results.",
         });
-      }
+        setIsLoadingHotels(false);
+      }, 2000);
+      
+      return;
     } catch (error) {
       console.error('Error searching hotels:', error);
       toast({
@@ -277,39 +288,99 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
     setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setChatInput('');
 
-    // Simple keyword extraction for demo
+    // Improved keyword extraction and parsing
     const lowerMessage = userMessage.toLowerCase();
+    let updatedParams = { ...flightParams };
+    let responseMessage = "I've updated your preferences! ";
+
+    // Extract departure city
+    const fromPatterns = [
+      /from\s+([^,.\n!?]+)/i,
+      /departure.*?from\s+([^,.\n!?]+)/i,
+      /leaving\s+from\s+([^,.\n!?]+)/i,
+      /starting\s+from\s+([^,.\n!?]+)/i,
+      /fly.*?from\s+([^,.\n!?]+)/i
+    ];
     
-    if (lowerMessage.includes('departure') || lowerMessage.includes('from')) {
-      const cityMatch = userMessage.match(/from\s+([^,.\n]+)/i) || userMessage.match(/departure.*?([A-Za-z\s]+)/i);
-      if (cityMatch) {
-        setFlightParams(prev => ({ ...prev, departureCity: cityMatch[1].trim() }));
+    for (const pattern of fromPatterns) {
+      const match = userMessage.match(pattern);
+      if (match) {
+        updatedParams.departureCity = match[1].trim();
+        responseMessage += `✓ Departure city set to ${match[1].trim()}. `;
+        break;
       }
     }
+
+    // Extract dates
+    const datePatterns = [
+      /(\d{4}-\d{2}-\d{2})/g,
+      /(\d{1,2}\/\d{1,2}\/\d{4})/g,
+      /(\d{1,2}-\d{1,2}-\d{4})/g
+    ];
     
-    if (lowerMessage.includes('budget')) {
-      if (lowerMessage.includes('budget-friendly') || lowerMessage.includes('cheap') || lowerMessage.includes('budget')) {
-        setFlightParams(prev => ({ ...prev, budget: 'budget-friendly' }));
-      } else if (lowerMessage.includes('luxury') || lowerMessage.includes('premium')) {
-        setFlightParams(prev => ({ ...prev, budget: 'luxury' }));
-      } else {
-        setFlightParams(prev => ({ ...prev, budget: 'mid-range' }));
+    for (const pattern of datePatterns) {
+      const matches = userMessage.match(pattern);
+      if (matches && matches.length >= 1) {
+        const date1 = new Date(matches[0]);
+        if (!isNaN(date1.getTime())) {
+          updatedParams.departureDate = date1.toISOString().split('T')[0];
+          responseMessage += `✓ Departure date set to ${matches[0]}. `;
+        }
+        
+        if (matches.length >= 2) {
+          const date2 = new Date(matches[1]);
+          if (!isNaN(date2.getTime())) {
+            updatedParams.returnDate = date2.toISOString().split('T')[0];
+            responseMessage += `✓ Return date set to ${matches[1]}. `;
+          }
+        }
       }
     }
+
+    // Extract budget preference
+    if (lowerMessage.includes('budget-friendly') || lowerMessage.includes('cheap') || lowerMessage.includes('budget') || lowerMessage.includes('affordable')) {
+      updatedParams.budget = 'budget-friendly';
+      responseMessage += `✓ Budget set to budget-friendly. `;
+    } else if (lowerMessage.includes('luxury') || lowerMessage.includes('premium') || lowerMessage.includes('expensive') || lowerMessage.includes('high-end')) {
+      updatedParams.budget = 'luxury';
+      responseMessage += `✓ Budget set to luxury. `;
+    } else if (lowerMessage.includes('mid-range') || lowerMessage.includes('moderate') || lowerMessage.includes('medium')) {
+      updatedParams.budget = 'mid-range';
+      responseMessage += `✓ Budget set to mid-range. `;
+    }
     
-    if (lowerMessage.includes('passenger') || lowerMessage.includes('people')) {
-      const numberMatch = userMessage.match(/(\d+)/);
-      if (numberMatch) {
-        setFlightParams(prev => ({ ...prev, passengers: parseInt(numberMatch[1]) }));
+    // Extract passenger count
+    const passengerPatterns = [
+      /(\d+)\s+(?:people|persons?|passengers?|travelers?|friends?)/i,
+      /(?:with|for)\s+(\d+)/i,
+      /total\s+(\d+)/i
+    ];
+    
+    for (const pattern of passengerPatterns) {
+      const match = userMessage.match(pattern);
+      if (match) {
+        const count = parseInt(match[1]);
+        if (count > 0 && count <= 9) {
+          updatedParams.passengers = count;
+          responseMessage += `✓ Passengers set to ${count}. `;
+        }
+        break;
       }
+    }
+
+    setFlightParams(updatedParams);
+    
+    if (responseMessage === "I've updated your preferences! ") {
+      responseMessage = "I didn't detect any specific travel details in your message. Please provide information like:\n• Departure city (e.g., 'from Delhi')\n• Dates (e.g., '2025-08-05 to 2025-08-08')\n• Number of passengers (e.g., '3 people')\n• Budget preference (budget-friendly, mid-range, or luxury)";
+    } else {
+      responseMessage += "\n\nFeel free to provide more details or use the search forms below!";
+      setShowFlightSearch(true);
     }
 
     setChatMessages(prev => [...prev, { 
       role: 'assistant', 
-      content: "I've updated your preferences! Feel free to provide more details or use the search forms below to find flights and hotels." 
+      content: responseMessage
     }]);
-    
-    setShowFlightSearch(true);
   };
 
   const searchFlights = async () => {
@@ -334,47 +405,57 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
     setIsLoadingFlights(true);
     
     try {
-      const params = new URLSearchParams({
-        engine: 'google_flights',
-        departure_id: flightParams.departureCity,
-        arrival_id: travelPlan?.destination || '',
-        outbound_date: flightParams.departureDate,
-        return_date: flightParams.returnDate,
-        adults: flightParams.passengers.toString(),
-        currency: 'USD',
-        hl: 'en',
-        api_key: serpApiKey
-      });
-
-      const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        }
+      // Since SERP API has CORS restrictions, we need to use a proxy or backend
+      // For now, let's simulate the API call and show mock data
+      toast({
+        title: "CORS Issue Detected",
+        description: "SERP API blocks direct browser requests. Using mock data for demonstration.",
+        variant: "destructive",
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('SERP API Error:', errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log('SERP API Response:', data);
+      // Mock flight data for demonstration
+      setTimeout(() => {
+        const mockFlights: FlightData[] = [
+          {
+            departure_token: "mock_1",
+            price: 850,
+            airline: "Emirates",
+            flight_number: "EK-385",
+            departure_time: "10:30 AM",
+            arrival_time: "6:45 PM",
+            duration: "8h 15m",
+            stops: 1
+          },
+          {
+            departure_token: "mock_2", 
+            price: 920,
+            airline: "Qatar Airways",
+            flight_number: "QR-657",
+            departure_time: "2:15 PM",
+            arrival_time: "11:30 PM",
+            duration: "9h 15m",
+            stops: 1
+          },
+          {
+            departure_token: "mock_3",
+            price: 1150,
+            airline: "Singapore Airlines",
+            flight_number: "SQ-439",
+            departure_time: "11:45 PM",
+            arrival_time: "7:30 AM+1",
+            duration: "7h 45m",
+            stops: 0
+          }
+        ];
+        
+        setFlights(mockFlights);
+        toast({
+          title: "Mock Flights Loaded!",
+          description: "Showing sample flight data. Integrate with backend for real results.",
+        });
+        setIsLoadingFlights(false);
+      }, 2000);
       
-      if (data.best_flights && data.best_flights.length > 0) {
-        setFlights(data.best_flights.slice(0, 5)); // Show top 5 flights
-        toast({
-          title: "Flights Found!",
-          description: `Found ${data.best_flights.length} available flights`,
-        });
-      } else {
-        toast({
-          title: "No Flights Found",
-          description: "Try adjusting your search criteria.",
-          variant: "destructive",
-        });
-      }
     } catch (error) {
       console.error('Error searching flights:', error);
       toast({
