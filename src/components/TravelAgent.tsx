@@ -284,103 +284,114 @@ Make the itinerary detailed, practical, and exciting with specific recommendatio
     e.preventDefault();
     if (!chatInput.trim()) return;
 
+    if (!apiKey) {
+      toast({
+        title: "Groq API Key Required",
+        description: "Please enter your Groq API key to use the chatbot.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const userMessage = chatInput.trim();
     setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setChatInput('');
 
-    // Improved keyword extraction and parsing
-    const lowerMessage = userMessage.toLowerCase();
-    let updatedParams = { ...flightParams };
-    let responseMessage = "I've updated your preferences! ";
-
-    // Extract departure city
-    const fromPatterns = [
-      /from\s+([^,.\n!?]+)/i,
-      /departure.*?from\s+([^,.\n!?]+)/i,
-      /leaving\s+from\s+([^,.\n!?]+)/i,
-      /starting\s+from\s+([^,.\n!?]+)/i,
-      /fly.*?from\s+([^,.\n!?]+)/i
-    ];
-    
-    for (const pattern of fromPatterns) {
-      const match = userMessage.match(pattern);
-      if (match) {
-        updatedParams.departureCity = match[1].trim();
-        responseMessage += `✓ Departure city set to ${match[1].trim()}. `;
-        break;
-      }
-    }
-
-    // Extract dates
-    const datePatterns = [
-      /(\d{4}-\d{2}-\d{2})/g,
-      /(\d{1,2}\/\d{1,2}\/\d{4})/g,
-      /(\d{1,2}-\d{1,2}-\d{4})/g
-    ];
-    
-    for (const pattern of datePatterns) {
-      const matches = userMessage.match(pattern);
-      if (matches && matches.length >= 1) {
-        const date1 = new Date(matches[0]);
-        if (!isNaN(date1.getTime())) {
-          updatedParams.departureDate = date1.toISOString().split('T')[0];
-          responseMessage += `✓ Departure date set to ${matches[0]}. `;
-        }
-        
-        if (matches.length >= 2) {
-          const date2 = new Date(matches[1]);
-          if (!isNaN(date2.getTime())) {
-            updatedParams.returnDate = date2.toISOString().split('T')[0];
-            responseMessage += `✓ Return date set to ${matches[1]}. `;
-          }
-        }
-      }
-    }
-
-    // Extract budget preference
-    if (lowerMessage.includes('budget-friendly') || lowerMessage.includes('cheap') || lowerMessage.includes('budget') || lowerMessage.includes('affordable')) {
-      updatedParams.budget = 'budget-friendly';
-      responseMessage += `✓ Budget set to budget-friendly. `;
-    } else if (lowerMessage.includes('luxury') || lowerMessage.includes('premium') || lowerMessage.includes('expensive') || lowerMessage.includes('high-end')) {
-      updatedParams.budget = 'luxury';
-      responseMessage += `✓ Budget set to luxury. `;
-    } else if (lowerMessage.includes('mid-range') || lowerMessage.includes('moderate') || lowerMessage.includes('medium')) {
-      updatedParams.budget = 'mid-range';
-      responseMessage += `✓ Budget set to mid-range. `;
-    }
-    
-    // Extract passenger count
-    const passengerPatterns = [
-      /(\d+)\s+(?:people|persons?|passengers?|travelers?|friends?)/i,
-      /(?:with|for)\s+(\d+)/i,
-      /total\s+(\d+)/i
-    ];
-    
-    for (const pattern of passengerPatterns) {
-      const match = userMessage.match(pattern);
-      if (match) {
-        const count = parseInt(match[1]);
-        if (count > 0 && count <= 9) {
-          updatedParams.passengers = count;
-          responseMessage += `✓ Passengers set to ${count}. `;
-        }
-        break;
-      }
-    }
-
-    setFlightParams(updatedParams);
-    
-    if (responseMessage === "I've updated your preferences! ") {
-      responseMessage = "I didn't detect any specific travel details in your message. Please provide information like:\n• Departure city (e.g., 'from Delhi')\n• Dates (e.g., '2025-08-05 to 2025-08-08')\n• Number of passengers (e.g., '3 people')\n• Budget preference (budget-friendly, mid-range, or luxury)";
-    } else {
-      responseMessage += "\n\nFeel free to provide more details or use the search forms below!";
-      setShowFlightSearch(true);
-    }
-
+    // Show loading message
     setChatMessages(prev => [...prev, { 
       role: 'assistant', 
-      content: responseMessage
+      content: "🤔 Analyzing your message..." 
     }]);
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama3-70b-8192',
+          messages: [
+            {
+              role: 'system',
+              content: `You are a travel information extractor. Analyze the user's message and extract travel-related information.
+
+Current destination: ${travelPlan?.destination || 'Not set'}
+Current departure city: ${flightParams.departureCity || 'Not set'}
+Current departure date: ${flightParams.departureDate || 'Not set'}
+Current return date: ${flightParams.returnDate || 'Not set'}
+Current passengers: ${flightParams.passengers || 1}
+Current budget: ${flightParams.budget || 'mid-range'}
+
+Extract and update ONLY the information mentioned in the user's message. Return a JSON object with this structure:
+{
+  "hasUpdates": boolean,
+  "updates": {
+    "departureCity": "string or null if not mentioned",
+    "departureDate": "YYYY-MM-DD format or null if not mentioned", 
+    "returnDate": "YYYY-MM-DD format or null if not mentioned",
+    "passengers": number or null if not mentioned,
+    "budget": "budget-friendly" | "mid-range" | "luxury" or null if not mentioned
+  },
+  "responseMessage": "A friendly response about what was updated or asking for clarification",
+  "needsMoreInfo": boolean
+}
+
+Be smart about date parsing - handle formats like "August 5th", "5/8/2025", "next week", etc.
+For budget, look for keywords like cheap/affordable/budget (budget-friendly), moderate/mid-range (mid-range), expensive/luxury/premium (luxury).
+For passengers, look for numbers and context like "3 people", "with 2 friends", "family of 4", etc.`
+            },
+            {
+              role: 'user',
+              content: userMessage
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 1000,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response from Groq');
+      }
+
+      const data = await response.json();
+      const result = JSON.parse(data.choices[0].message.content);
+
+      // Remove loading message
+      setChatMessages(prev => prev.slice(0, -1));
+
+      if (result.hasUpdates) {
+        setFlightParams(prev => ({
+          ...prev,
+          ...(result.updates.departureCity && { departureCity: result.updates.departureCity }),
+          ...(result.updates.departureDate && { departureDate: result.updates.departureDate }),
+          ...(result.updates.returnDate && { returnDate: result.updates.returnDate }),
+          ...(result.updates.passengers && { passengers: result.updates.passengers }),
+          ...(result.updates.budget && { budget: result.updates.budget }),
+        }));
+        
+        if (!showFlightSearch) {
+          setShowFlightSearch(true);
+        }
+      }
+
+      setChatMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: result.responseMessage 
+      }]);
+
+    } catch (error) {
+      console.error('Error parsing message:', error);
+      // Remove loading message
+      setChatMessages(prev => prev.slice(0, -1));
+      
+      setChatMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "Sorry, I had trouble understanding your message. Could you please rephrase it or provide more specific details like departure city, dates, number of passengers, or budget preference?" 
+      }]);
+    }
   };
 
   const searchFlights = async () => {
